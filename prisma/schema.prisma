@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  name           String
+  passwordHash   String
+  role           String          @default("USER") // ADMIN, MANAGER, USER
+  department     String?
+  avatar         String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  purchaseOrders PurchaseOrder[]
+  auditLogs      AuditLog[]
+}
+
+model Supplier {
+  id                String          @id @default(cuid())
+  name              String
+  code              String          @unique
+  email             String
+  phone             String?
+  address           String?
+  city              String?
+  state             String?
+  country           String          @default("Australia")
+  abn               String?         // Australian Business Number
+  contactPerson     String?
+  category          String?         // IT Hardware, Software, Services, etc.
+  rating            Float           @default(0)
+  status            String          @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED, PENDING
+  paymentTerms      String          @default("NET30") // NET30, NET60, NET90, COD
+  leadTimeDays      Int             @default(7)
+  qualityScore      Float           @default(0)
+  deliveryScore     Float           @default(0)
+  complianceStatus  String          @default("COMPLIANT") // COMPLIANT, NON_COMPLIANT, PENDING_REVIEW
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  purchaseOrders    PurchaseOrder[]
+  inventoryItems    InventoryItem[]
+  contracts         SupplierContract[]
+}
+
+model SupplierContract {
+  id              String   @id @default(cuid())
+  supplierId      String
+  supplier        Supplier @relation(fields: [supplierId], references: [id])
+  contractNumber  String   @unique
+  title           String
+  startDate       DateTime
+  endDate         DateTime
+  value           Float
+  currency        String   @default("AUD")
+  status          String   @default("ACTIVE") // ACTIVE, EXPIRED, TERMINATED, PENDING
+  terms           String?
+  blockchainTxHash String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PurchaseOrder {
+  id                String            @id @default(cuid())
+  orderNumber       String            @unique
+  supplierId        String
+  supplier          Supplier          @relation(fields: [supplierId], references: [id])
+  createdById       String
+  createdBy         User              @relation(fields: [createdById], references: [id])
+  status            String            @default("DRAFT") // DRAFT, PENDING_APPROVAL, APPROVED, ORDERED, SHIPPED, DELIVERED, CANCELLED
+  priority          String            @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  orderDate         DateTime          @default(now())
+  expectedDelivery  DateTime?
+  actualDelivery    DateTime?
+  subtotal          Float             @default(0)
+  tax               Float             @default(0)
+  shippingCost      Float             @default(0)
+  totalAmount       Float             @default(0)
+  currency          String            @default("AUD")
+  notes             String?
+  approvalNotes     String?
+  blockchainTxHash  String?
+  blockchainStatus  String?           // PENDING, CONFIRMED, FAILED
+  isAutomated       Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  items             PurchaseOrderItem[]
+  shipments         Shipment[]
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  description     String
+  sku             String?
+  quantity        Int
+  unitPrice       Float
+  totalPrice      Float
+  unit            String        @default("EA") // EA, KG, L, M, BOX, PALLET
+  receivedQty     Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model InventoryItem {
+  id                  String              @id @default(cuid())
+  name                String
+  sku                 String              @unique
+  description         String?
+  category            String              // Hardware, Software, Components, Accessories
+  supplierId          String?
+  supplier            Supplier?           @relation(fields: [supplierId], references: [id])
+  currentStock        Int                 @default(0)
+  minimumStock        Int                 @default(10)
+  maximumStock        Int                 @default(100)
+  reorderPoint        Int                 @default(20)
+  reorderQuantity     Int                 @default(50)
+  unitPrice           Float               @default(0)
+  unit                String              @default("EA")
+  location            String?             // Warehouse location
+  abcCategory         String?             // A, B, C classification
+  leadTimeDays        Int                 @default(7)
+  averageDailyUsage   Float               @default(0)
+  safetyStock         Int                 @default(5)
+  economicOrderQty    Int?                // EOQ calculated
+  lastRestocked       DateTime?
+  status              String              @default("ACTIVE") // ACTIVE, DISCONTINUED, OUT_OF_STOCK
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  orderItems          PurchaseOrderItem[]
+  stockMovements      StockMovement[]
+}
+
+model StockMovement {
+  id              String        @id @default(cuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  type            String        // IN, OUT, ADJUSTMENT
+  quantity        Int
+  reference       String?       // PO number or reason
+  notes           String?
+  createdAt       DateTime      @default(now())
+}
+
+model Shipment {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  trackingNumber  String?
+  carrier         String?
+  status          String        @default("PENDING") // PENDING, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELAYED, RETURNED
+  origin          String?
+  destination     String?       @default("45 St Georges Terrace, Perth WA 6000")
+  estimatedArrival DateTime?
+  actualArrival   DateTime?
+  weight          Float?
+  notes           String?
+  lastUpdate      DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  events          ShipmentEvent[]
+}
+
+model ShipmentEvent {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  status      String
+  location    String?
+  description String?
+  timestamp   DateTime @default(now())
+}
+
+model BlockchainTransaction {
+  id              String   @id @default(cuid())
+  txHash          String   @unique
+  blockNumber     Int?
+  from            String
+  to              String?
+  contractAddress String?
+  method          String?  // createPO, approvePO, confirmDelivery, etc.
+  referenceId     String?  // PO ID, Contract ID
+  referenceType   String?  // PURCHASE_ORDER, CONTRACT, PAYMENT
+  status          String   @default("PENDING") // PENDING, CONFIRMED, FAILED
+  gasUsed         String?
+  value           String?
+  data            String?  // JSON encoded extra data
+  createdAt       DateTime @default(now())
+  confirmedAt     DateTime?
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   // CREATE, UPDATE, DELETE, APPROVE, REJECT
+  entity      String   // PURCHASE_ORDER, SUPPLIER, INVENTORY, etc.
+  entityId    String?
+  details     String?  // JSON encoded change details
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  category  String?  // GENERAL, BLOCKCHAIN, NOTIFICATIONS, PROCUREMENT
+  updatedAt DateTime @updatedAt
+}
